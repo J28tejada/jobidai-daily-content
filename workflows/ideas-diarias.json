@@ -1,0 +1,413 @@
+{
+  "name": "Ideas Diarias",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-7am",
+      "name": "Cron 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        300
+      ],
+      "notes": "Dispara a las 7:00 en la TIMEZONE DE LA INSTANCIA de n8n, no la del workflow. Verificar Settings -> Timezone = America/Santo_Domingo."
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "hn-front-page",
+      "name": "HN - Front page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Hacker News (Algolia) -> formato común\nconst res = $input.first().json;\nconst hits = res.hits || [];\n\nreturn hits\n  .filter(h => h.title && (h.url || h.objectID))\n  .slice(0, 15)\n  .map(h => ({\n    json: {\n      fuente: 'hackernews',\n      titulo: h.title,\n      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,\n      puntaje: h.points ?? null,\n      publicado_en: h.created_at || null,\n      extracto: (h.story_text || h.comment_text || '').replace(/<[^>]+>/g, '').slice(0, 500) || null,\n      raw: h,\n    },\n  }));\n"
+      },
+      "id": "normalizar-hn",
+      "name": "Normalizar HN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/artificial+automation+SaaS+smallbusiness+n8n/top.json?t=day&limit=25",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "jobidai-daily-content/1.0 (n8n; contacto: josue)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "reddit-top-dia",
+      "name": "Reddit - Top del día",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ],
+      "notes": "Reddit devuelve 429 si el User-Agent es genérico. No quitar el header. Si empieza a fallar seguido, cambiar a la API OAuth de Reddit."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reddit (listing .json) -> formato común\nconst res = $input.first().json;\nconst children = res?.data?.children || [];\n\nreturn children\n  .map(c => c.data)\n  .filter(p => p && p.title && !p.stickied)\n  .slice(0, 15)\n  .map(p => ({\n    json: {\n      fuente: 'reddit',\n      titulo: p.title,\n      url: p.url_overridden_by_dest || `https://www.reddit.com${p.permalink}`,\n      puntaje: p.score ?? null,\n      publicado_en: p.created_utc ? new Date(p.created_utc * 1000).toISOString() : null,\n      extracto: (p.selftext || '').slice(0, 500) || null,\n      raw: { subreddit: p.subreddit, permalink: p.permalink, num_comments: p.num_comments },\n    },\n  }));\n"
+      },
+      "id": "normalizar-reddit",
+      "name": "Normalizar Reddit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=(inteligencia+artificial+OR+automatizaci%C3%B3n+OR+%22IA+para+empresas%22)+when:1d&hl=es-419&gl=DO&ceid=DO:es-419",
+        "options": {}
+      },
+      "id": "google-news-rss",
+      "name": "Google News - RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Google News RSS -> formato común\n// El nodo RSS Feed Read emite un item por entrada del feed.\nreturn $input.all()\n  .filter(i => i.json.title)\n  .slice(0, 15)\n  .map(i => {\n    const it = i.json;\n    return {\n      json: {\n        fuente: 'google_news',\n        titulo: String(it.title).replace(/\\s+-\\s+[^-]+$/, '').trim(), // quita \" - Medio\" del final\n        url: it.link || null,\n        puntaje: null,\n        publicado_en: it.isoDate || it.pubDate || null,\n        extracto: (it.contentSnippet || it.content || '').replace(/<[^>]+>/g, '').slice(0, 500) || null,\n        raw: { titulo_original: it.title, creator: it.creator || null },\n      },\n    };\n  });\n"
+      },
+      "id": "normalizar-google-news",
+      "name": "Normalizar Google News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3,
+        "options": {}
+      },
+      "id": "unir-todas-las-fuentes",
+      "name": "Unir todas las fuentes",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        460,
+        300
+      ],
+      "notes": "DEBE tener 3 inputs. Si al importar aparece con 2, ajustar \"Number of Inputs\" a 3 y reconectar el normalizador que quedó suelto."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Preparar lote para Claude\n// Dedupe -> recorte -> construcción del system/user prompt.\n//\n// SYSTEM_PROMPT es la copia ejecutable de prompts/generacion-ideas.md (v1).\n// Si editas uno, edita el otro en el mismo commit.\n// ============================================================================\n\nconst MODELO = 'claude-opus-5';   // para bajar costo: 'claude-sonnet-5'\nconst MAX_ITEMS = 30;             // items que se le mandan a Claude por run\n\nconst SYSTEM_PROMPT = `Eres el estratega de contenido de Josue Tejada: full-stack developer, IT admin y fundador de Jobidai.\nSu marca personal es \"automatización + IA aplicada a negocios reales\" — no hype, no futurismo vago,\nno \"la IA va a cambiar el mundo\". Habla desde la trinchera: cosas que él mismo implementa para\nnegocios pequeños y medianos en República Dominicana y LATAM.\n\nSu audiencia son dueños de negocio, gerentes de operaciones y developers que quieren aplicar\nautomatización e IA a problemas concretos: facturación, inventario, WhatsApp, reportes, back office.\n\nRecibirás una lista de items de noticias/discusiones de Hacker News, Reddit y Google News.\nPara CADA item devuelve un objeto JSON con esta forma exacta:\n\n{\n  \"id\": \"<el id que te llegó en el item, copiado tal cual>\",\n  \"resumen\": \"<2-3 oraciones en español, qué pasó y por qué importa. Concreto, sin adjetivos de relleno.>\",\n  \"angulos\": [\n    { \"angulo\": \"<el enfoque del contenido, una oración>\", \"gancho\": \"<la primera línea del post, lista para publicar>\" }\n  ],\n  \"formato_sugerido\": \"<uno de: carrusel | hilo | video corto | post largo | newsletter>\",\n  \"score_relevancia\": <entero 0-10>,\n  \"descartable\": <true|false>\n}\n\nReglas:\n\n1. **Español dominicano neutro.** Profesional pero directo. Nada de \"revolucionario\", \"game changer\",\n   \"el futuro es ahora\". Si no puedes explicar por qué le importa a un dueño de negocio, es un 3 o menos.\n2. **2 a 3 ángulos por item.** Cada ángulo distinto de verdad: no reformules el mismo enfoque.\n   Los ganchos son la primera línea real del post, no una descripción del post.\n3. **score_relevancia** mide qué tan aplicable es a la audiencia de Josue, no qué tan popular es\n   la noticia:\n   - 8-10: se puede convertir en un caso de uso implementable esta semana\n   - 5-7: relevante para el sector, requiere aterrizarlo\n   - 0-4: interesante pero lejano al día a día de un negocio\n4. **descartable: true** para: rondas de inversión y valuaciones, drama corporativo, política de\n   la industria, papers puramente académicos, lanzamientos de hardware de consumo, y cualquier\n   cosa sin ángulo práctico. Un item descartable igual lleva \\`resumen\\`, y puede llevar \\`angulos: []\\`.\n5. **Nunca inventes datos.** Si el título es lo único que tienes, trabaja con eso y baja el score.\n   No te inventes cifras, nombres de empresas ni resultados.\n\nFormato de salida: responde ÚNICAMENTE con el array JSON. Sin \\`\\`\\`json, sin texto antes o después,\nsin explicaciones. Un objeto por cada item recibido, en el mismo orden.`;\n\n// --- Fecha del run, anclada a Santo Domingo -------------------------------\nconst fecha = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });\n\n// --- Dedupe por URL normalizada -------------------------------------------\nconst vistos = new Set();\nconst items = [];\n\nfor (const entrada of $input.all()) {\n  const it = entrada.json;\n  if (!it || !it.titulo) continue;\n\n  const clave = (it.url || it.titulo)\n    .toLowerCase()\n    .replace(/^https?:\\/\\//, '')\n    .replace(/^www\\./, '')\n    .replace(/[?#].*$/, '')\n    .replace(/\\/$/, '');\n\n  if (vistos.has(clave)) continue;\n  vistos.add(clave);\n\n  items.push({\n    id: `${it.fuente}-${items.length}`,\n    fuente: it.fuente,\n    titulo: it.titulo,\n    url: it.url || null,\n    puntaje: it.puntaje ?? null,\n    publicado_en: it.publicado_en || null,\n    extracto: it.extracto || null,\n    raw: it.raw || null,\n  });\n}\n\n// Los de mayor puntaje primero; los sin puntaje (Google News) no quedan al fondo.\nitems.sort((a, b) => (b.puntaje ?? 50) - (a.puntaje ?? 50));\nconst lote = items.slice(0, MAX_ITEMS);\n\nif (lote.length === 0) {\n  throw new Error('Ninguna de las 3 fuentes devolvió items. Revisa los nodos HTTP antes de reintentar.');\n}\n\nconst paraClaude = lote.map(({ id, fuente, titulo, url, puntaje, extracto }) => ({\n  id, fuente, titulo, url, puntaje, extracto,\n}));\n\nconst USER_PROMPT = `Fecha: ${fecha}\n\nItems de hoy:\n\n${JSON.stringify(paraClaude, null, 2)}`;\n\nreturn [{\n  json: {\n    fecha,\n    modelo: MODELO,\n    system_prompt: SYSTEM_PROMPT,\n    user_prompt: USER_PROMPT,\n    items: lote,          // se re-usa en \"Parsear respuesta IA\" para reunir con la respuesta\n    total_items: lote.length,\n  },\n}];\n"
+      },
+      "id": "preparar-lote-para-claude",
+      "name": "Preparar lote para Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "notes": "Aquí vive SYSTEM_PROMPT (copia de prompts/generacion-ideas.md v1) y el modelo. Mantener sincronizado.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.modelo, max_tokens: 8000, system: $json.system_prompt, messages: [ { role: \"user\", content: $json.user_prompt } ] }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "claude-generar-angulos",
+      "name": "Claude - Generar ángulos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Credencial: \"Anthropic API\" (tipo Anthropic, manda x-api-key). El system prompt NO se edita aquí: viene de $json.system_prompt."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Parsear respuesta IA\n// Une la respuesta de Claude con los items originales y arma las filas que\n// van a Supabase (columnas exactas de public.ideas_diarias).\n//\n// Nunca lanza: si la IA no devuelve JSON válido, marca error='parse_error'\n// para que la corrida quede registrada y sea diagnosticable.\n// ============================================================================\n\nconst lote = $('Preparar lote para Claude').first().json;\nconst { fecha, items } = lote;\n\nconst fila = (it, extra) => ({\n  json: {\n    fecha,\n    fuente: it.fuente,\n    titulo: it.titulo,\n    url: it.url,\n    puntaje: it.puntaje,\n    publicado_en: it.publicado_en,\n    resumen: null,\n    angulos: [],\n    formato_sugerido: null,\n    score_relevancia: null,\n    descartable: false,\n    error: null,\n    raw: it.raw,\n    ...extra,\n  },\n});\n\n// --- Texto crudo de la respuesta ------------------------------------------\nconst respuesta = $input.first().json;\nconst texto = (respuesta?.content || [])\n  .filter(b => b.type === 'text')\n  .map(b => b.text)\n  .join('')\n  .trim();\n\n// --- Parseo tolerante: la IA a veces envuelve en ```json a pesar del prompt --\nfunction parsear(txt) {\n  if (!txt) return null;\n  const limpio = txt.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n  try {\n    return JSON.parse(limpio);\n  } catch (e) {\n    const desde = limpio.indexOf('[');\n    const hasta = limpio.lastIndexOf(']');\n    if (desde === -1 || hasta <= desde) return null;\n    try {\n      return JSON.parse(limpio.slice(desde, hasta + 1));\n    } catch (e2) {\n      return null;\n    }\n  }\n}\n\nconst parseado = parsear(texto);\n\n// --- Fallo total: se guarda todo el lote marcado, no se pierde la corrida ---\nif (!Array.isArray(parseado)) {\n  return items.map(it => fila(it, {\n    descartable: true,\n    error: 'parse_error',\n    resumen: null,\n  }));\n}\n\n// --- Unión por id, con fallback a posición ---------------------------------\nconst porId = new Map();\nfor (const r of parseado) {\n  if (r && typeof r === 'object' && r.id != null) porId.set(String(r.id), r);\n}\n\nconst normalizarAngulos = a => {\n  if (!Array.isArray(a)) return [];\n  return a\n    .filter(x => x && typeof x === 'object')\n    .map(x => ({ angulo: String(x.angulo ?? ''), gancho: String(x.gancho ?? '') }))\n    .filter(x => x.angulo || x.gancho);\n};\n\nconst score = v => {\n  const n = Number(v);\n  if (!Number.isFinite(n)) return null;\n  return Math.min(10, Math.max(0, Math.round(n)));\n};\n\nreturn items.map((it, i) => {\n  const r = porId.get(String(it.id)) ?? parseado[i];\n\n  if (!r || typeof r !== 'object') {\n    return fila(it, { descartable: true, error: 'parse_error' });\n  }\n\n  return fila(it, {\n    resumen: r.resumen ? String(r.resumen) : null,\n    angulos: normalizarAngulos(r.angulos),\n    formato_sugerido: r.formato_sugerido ? String(r.formato_sugerido) : null,\n    score_relevancia: score(r.score_relevancia),\n    descartable: r.descartable === true,\n  });\n});\n"
+      },
+      "id": "parsear-respuesta-ia",
+      "name": "Parsear respuesta IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "ideas_diarias",
+        "dataToSend": "autoMapInputData",
+        "options": {}
+      },
+      "id": "guardar-en-supabase",
+      "name": "Guardar en Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Credencial: \"Supabase - ideas_diarias\" con la SERVICE_ROLE key (la anon no pasa RLS). onError=continue: un duplicado (unique fecha+url_hash) no debe matar la corrida."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// Formatear mensaje\n// Arma el texto de WhatsApp. Lee de \"Parsear respuesta IA\" (no de Supabase)\n// para no depender del shape que devuelve el insert.\n// ============================================================================\n\nconst TOP_N = 5;   // ideas que se mandan por WhatsApp\n\nconst todas = $('Parsear respuesta IA').all().map(i => i.json);\nconst fecha = todas[0]?.fecha ?? new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santo_Domingo' });\n\nconst fallidas = todas.filter(i => i.error).length;\n\nconst utiles = todas\n  .filter(i => !i.descartable && !i.error && (i.score_relevancia ?? 0) >= 5)\n  .sort((a, b) => (b.score_relevancia ?? 0) - (a.score_relevancia ?? 0))\n  .slice(0, TOP_N);\n\nconst lineas = [`*Ideas del día — ${fecha}*`, ''];\n\nif (utiles.length === 0) {\n  lineas.push('Hoy no salió nada con score 5+. Revisa la tabla `ideas_diarias` si quieres ver el resto.');\n} else {\n  utiles.forEach((it, n) => {\n    lineas.push(`*${n + 1}. ${it.titulo}*`);\n    lineas.push(`_${it.fuente} · relevancia ${it.score_relevancia}/10 · ${it.formato_sugerido ?? 'formato libre'}_`);\n    if (it.resumen) lineas.push(it.resumen);\n\n    (it.angulos || []).slice(0, 2).forEach(a => {\n      lineas.push(`  • ${a.angulo}`);\n      if (a.gancho) lineas.push(`    _\"${a.gancho}\"_`);\n    });\n\n    if (it.url) lineas.push(it.url);\n    lineas.push('');\n  });\n}\n\nlineas.push('---');\nlineas.push(`${todas.length} items procesados · ${utiles.length} con score 5+${fallidas ? ` · ${fallidas} con error de parseo` : ''}`);\n\nreturn [{\n  json: {\n    mensaje: lineas.join('\\n'),\n    fecha,\n    total: todas.length,\n    destacadas: utiles.length,\n    fallidas,\n  },\n}];\n"
+      },
+      "id": "formatear-mensaje",
+      "name": "Formatear mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "enviar-por-whatsapp",
+      "name": "Enviar por WhatsApp",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ],
+      "notes": "PLACEHOLDER. Reemplazar por el nodo real del bot de WhatsApp de Jobidai, usando {{ $json.mensaje }} como texto. Ver scripts/setup.md paso 4."
+    }
+  ],
+  "connections": {
+    "Cron 7am": {
+      "main": [
+        [
+          {
+            "node": "HN - Front page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reddit - Top del día",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google News - RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HN - Front page": {
+      "main": [
+        [
+          {
+            "node": "Normalizar HN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit - Top del día": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Reddit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google News - RSS": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Google News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar HN": {
+      "main": [
+        [
+          {
+            "node": "Unir todas las fuentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Reddit": {
+      "main": [
+        [
+          {
+            "node": "Unir todas las fuentes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Normalizar Google News": {
+      "main": [
+        [
+          {
+            "node": "Unir todas las fuentes",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Unir todas las fuentes": {
+      "main": [
+        [
+          {
+            "node": "Preparar lote para Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar lote para Claude": {
+      "main": [
+        [
+          {
+            "node": "Claude - Generar ángulos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Generar ángulos": {
+      "main": [
+        [
+          {
+            "node": "Parsear respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear respuesta IA": {
+      "main": [
+        [
+          {
+            "node": "Guardar en Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar en Supabase": {
+      "main": [
+        [
+          {
+            "node": "Formatear mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear mensaje": {
+      "main": [
+        [
+          {
+            "node": "Enviar por WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Santo_Domingo",
+    "saveManualExecutions": true
+  },
+  "tags": [],
+  "pinData": {}
+}
