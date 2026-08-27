@@ -21,8 +21,14 @@ const REDDIT_URL =
 const HN_URL =
   'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30';
 
-const claudeBody =
-  '={{ JSON.stringify({ model: $json.modelo, max_tokens: 8000, system: $json.system_prompt, messages: [ { role: "user", content: $json.user_prompt } ] }) }}';
+// Body de Gemini generateContent. responseMimeType: application/json obliga al
+// modelo a devolver JSON puro, que es justo lo que espera "Parsear respuesta IA".
+const geminiBody =
+  '={{ JSON.stringify({' +
+  ' system_instruction: { parts: [ { text: $json.system_prompt } ] },' +
+  ' contents: [ { role: "user", parts: [ { text: $json.user_prompt } ] } ],' +
+  ' generationConfig: { temperature: 0.7, maxOutputTokens: 32768, responseMimeType: "application/json" }' +
+  ' }) }}';
 
 const nodes = [
   {
@@ -101,33 +107,30 @@ const nodes = [
   },
 
   code(
-    'Preparar lote para Claude',
+    'Preparar lote para el modelo',
     'prep.js',
     [680, 300],
     'Aquí vive SYSTEM_PROMPT (copia de prompts/generacion-ideas.md v1) y el modelo. Mantener sincronizado.'
   ),
 
-  // ---------------- Claude ----------------
+  // ---------------- Gemini ----------------
   {
     parameters: {
       method: 'POST',
-      url: 'https://api.anthropic.com/v1/messages',
-      authentication: 'predefinedCredentialType',
-      nodeCredentialType: 'anthropicApi',
+      url: '=https://generativelanguage.googleapis.com/v1beta/models/{{ $json.modelo }}:generateContent',
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
       sendHeaders: true,
       headerParameters: {
-        parameters: [
-          { name: 'anthropic-version', value: '2023-06-01' },
-          { name: 'content-type', value: 'application/json' },
-        ],
+        parameters: [{ name: 'content-type', value: 'application/json' }],
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: claudeBody,
+      jsonBody: geminiBody,
       options: { timeout: 300000 },
     },
-    id: 'claude-generar-angulos',
-    name: 'Claude - Generar ángulos',
+    id: 'gemini-generar-angulos',
+    name: 'Gemini - Generar ángulos',
     type: 'n8n-nodes-base.httpRequest',
     typeVersion: 4.2,
     position: [900, 300],
@@ -135,8 +138,9 @@ const nodes = [
     maxTries: 3,
     waitBetweenTries: 5000,
     notes:
-      'Credencial: "Anthropic API" (tipo Anthropic, manda x-api-key). ' +
-      'El system prompt NO se edita aquí: viene de $json.system_prompt.',
+      'Credencial: Header Auth "Gemini API" -> Name: x-goog-api-key, Value: la API key. ' +
+      'El modelo sale de $json.modelo (workflows/nodes/prep.js), no se hardcodea aquí. ' +
+      'El system prompt tampoco se edita aquí: viene de $json.system_prompt.',
   },
 
   code('Parsear respuesta IA', 'parse.js', [1120, 300]),
@@ -191,9 +195,9 @@ const connections = {
   ...conn('Normalizar HN', 'Unir todas las fuentes', 0),
   ...conn('Normalizar Reddit', 'Unir todas las fuentes', 1),
   ...conn('Normalizar Google News', 'Unir todas las fuentes', 2),
-  ...conn('Unir todas las fuentes', 'Preparar lote para Claude'),
-  ...conn('Preparar lote para Claude', 'Claude - Generar ángulos'),
-  ...conn('Claude - Generar ángulos', 'Parsear respuesta IA'),
+  ...conn('Unir todas las fuentes', 'Preparar lote para el modelo'),
+  ...conn('Preparar lote para el modelo', 'Gemini - Generar ángulos'),
+  ...conn('Gemini - Generar ángulos', 'Parsear respuesta IA'),
   ...conn('Parsear respuesta IA', 'Guardar en Supabase'),
   ...conn('Guardar en Supabase', 'Formatear mensaje'),
   ...conn('Formatear mensaje', 'Enviar por WhatsApp'),

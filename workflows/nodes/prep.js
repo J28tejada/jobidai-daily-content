@@ -1,12 +1,12 @@
 // ============================================================================
-// Preparar lote para Claude
+// Preparar lote para el modelo
 // Dedupe -> recorte -> construcción del system/user prompt.
 //
 // SYSTEM_PROMPT es la copia ejecutable de prompts/generacion-ideas.md (v1).
 // Si editas uno, edita el otro en el mismo commit.
 // ============================================================================
 
-const MODELO = 'claude-opus-5';   // para bajar costo: 'claude-sonnet-5'
+const MODELO = 'gemini-3.5-flash';   // id exacto del modelo en la API de Gemini
 const MAX_ITEMS = 30;             // items que se le mandan a Claude por run
 
 const SYSTEM_PROMPT = `Eres el estratega de contenido de Josue Tejada: full-stack developer, IT admin y fundador de Jobidai.

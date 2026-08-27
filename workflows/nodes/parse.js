@@ -1,13 +1,13 @@
 // ============================================================================
 // Parsear respuesta IA
-// Une la respuesta de Claude con los items originales y arma las filas que
+// Une la respuesta del modelo con los items originales y arma las filas que
 // van a Supabase (columnas exactas de public.ideas_diarias).
 //
-// Nunca lanza: si la IA no devuelve JSON válido, marca error='parse_error'
+// Nunca lanza: si el modelo no devuelve JSON válido, marca error='parse_error'
 // para que la corrida quede registrada y sea diagnosticable.
 // ============================================================================
 
-const lote = $('Preparar lote para Claude').first().json;
+const lote = $('Preparar lote para el modelo').first().json;
 const { fecha, items } = lote;
 
 const fila = (it, extra) => ({
@@ -29,13 +29,28 @@ const fila = (it, extra) => ({
   },
 });
 
-// --- Texto crudo de la respuesta ------------------------------------------
+// --- Texto crudo de la respuesta (Gemini generateContent) -----------------
 const respuesta = $input.first().json;
-const texto = (respuesta?.content || [])
-  .filter(b => b.type === 'text')
-  .map(b => b.text)
+const candidato = respuesta?.candidates?.[0];
+
+const texto = (candidato?.content?.parts || [])
+  .map(p => p.text)
+  .filter(t => typeof t === 'string')
   .join('')
   .trim();
+
+// Gemini puede devolver 200 sin texto: filtro de seguridad, o corte por
+// MAX_TOKENS. Se distingue de "devolvió texto pero no es JSON" para poder
+// diagnosticar sin adivinar.
+if (!texto) {
+  const motivo = candidato?.finishReason
+    || respuesta?.promptFeedback?.blockReason
+    || 'desconocido';
+  return items.map(it => fila(it, {
+    descartable: true,
+    error: `sin_respuesta:${motivo}`,
+  }));
+}
 
 // --- Parseo tolerante: la IA a veces envuelve en ```json a pesar del prompt --
 function parsear(txt) {

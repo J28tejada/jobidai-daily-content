@@ -42,10 +42,10 @@ check('los 3 fuentes sobreviven', () => assert.deepEqual(
   [...new Set(lote.items.map(i => i.fuente))].sort(), ['google_news', 'hackernews', 'reddit']));
 check('system prompt embebido no vacio', () => assert.ok(lote.system_prompt.length > 1500));
 check('user prompt lleva fecha y items', () => assert.match(lote.user_prompt, /^Fecha: \d{4}-\d{2}-\d{2}/));
-check('modelo definido', () => assert.equal(lote.modelo, 'claude-opus-5'));
+check('modelo definido', () => assert.equal(lote.modelo, 'gemini-3.5-flash'));
 
 console.log('\nParsear respuesta IA — camino feliz');
-const respuestaOK = { content: [{ type: 'text', text: '```json\n' + JSON.stringify(
+const respuestaOK = { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '```json\n' + JSON.stringify(
   lote.items.map((it, i) => ({
     id: it.id,
     resumen: `Resumen ${i}`,
@@ -53,8 +53,8 @@ const respuestaOK = { content: [{ type: 'text', text: '```json\n' + JSON.stringi
     formato_sugerido: 'carrusel',
     score_relevancia: i === 0 ? 99 : 7,     // 99 debe recortarse a 10
     descartable: i === 3,
-  }))) + '\n```' }] };
-const filas = runCode('parse.js', [respuestaOK], { 'Preparar lote para Claude': [lote] });
+  }))) + '\n```' }] } }] };
+const filas = runCode('parse.js', [respuestaOK], { 'Preparar lote para el modelo': [lote] });
 check('una fila por item', () => assert.equal(filas.length, lote.total_items));
 check('tolera el envoltorio ```json', () => assert.equal(filas[0].resumen, 'Resumen 0'));
 check('recorta score fuera de rango a 0-10', () => assert.equal(filas[0].score_relevancia, 10));
@@ -68,11 +68,19 @@ check('columnas == schema (sin id/url_hash/created_at)', () =>
   assert.deepEqual(Object.keys(filas[0]).sort(), [...COLS].sort()));
 
 console.log('\nParsear respuesta IA — respuesta rota');
-const roto = runCode('parse.js', [{ content: [{ type: 'text', text: 'Perdón, no puedo hacer eso.' }] }],
-  { 'Preparar lote para Claude': [lote] });
+const roto = runCode('parse.js', [{ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Perdón, no puedo hacer eso.' }] } }] }],
+  { 'Preparar lote para el modelo': [lote] });
 check('no lanza; marca parse_error', () => assert.ok(roto.every(f => f.error === 'parse_error')));
 check('marca descartable en fallo', () => assert.ok(roto.every(f => f.descartable === true)));
 check('conserva titulo y url para diagnostico', () => assert.equal(roto[0].titulo, filas[0].titulo));
+
+console.log('\nParsear respuesta IA — 200 sin texto (propio de Gemini)');
+const cortado = runCode('parse.js', [{ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }] }],
+  { 'Preparar lote para el modelo': [lote] });
+check('distingue truncado de JSON invalido', () => assert.ok(cortado.every(f => f.error === 'sin_respuesta:MAX_TOKENS')));
+const bloqueado = runCode('parse.js', [{ promptFeedback: { blockReason: 'SAFETY' } }],
+  { 'Preparar lote para el modelo': [lote] });
+check('reporta bloqueo por filtro', () => assert.ok(bloqueado.every(f => f.error === 'sin_respuesta:SAFETY')));
 
 console.log('\nFormatear mensaje');
 const msg = runCode('format_msg.js', [{}], { 'Parsear respuesta IA': filas })[0];

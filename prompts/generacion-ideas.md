@@ -1,16 +1,16 @@
 # Prompt de generación de ideas — v1
 
-Fuente de verdad del prompt que usa el nodo `Claude - Generar ángulos`.
+Fuente de verdad del prompt que usa el nodo `Gemini - Generar ángulos`.
 
 > **Importante:** el texto vive en dos lugares y deben mantenerse sincronizados:
 > 1. Este archivo (versionado, con historial).
-> 2. La constante `SYSTEM_PROMPT` dentro del nodo Code `Preparar lote para Claude`
+> 2. La constante `SYSTEM_PROMPT` dentro del nodo Code `Preparar lote para el modelo`
 >    en `workflows/ideas-diarias.json`.
 >
 > Si cambias uno, cambia el otro en el mismo commit y sube la versión aquí abajo.
 
 - **Versión actual:** v1
-- **Modelo:** `claude-opus-5` (definido en el nodo Code; ver README para bajar a `claude-sonnet-5`)
+- **Modelo:** `gemini-3.5-flash` (definido en el nodo Code, constante `MODELO`)
 - **Formato de salida:** JSON estricto, un array de objetos
 
 ---
@@ -63,7 +63,8 @@ sin explicaciones. Un objeto por cada item recibido, en el mismo orden.
 
 ## User prompt
 
-Lo construye el nodo Code `Preparar lote para Claude`. Estructura:
+Lo construye el nodo Code `Preparar lote para el modelo` y se manda como `contents[0].parts[0].text`.
+El system prompt va aparte, en `system_instruction`. Estructura:
 
 ```
 Fecha: <YYYY-MM-DD>

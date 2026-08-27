@@ -10,7 +10,7 @@ Los pasos 1–3 se pueden hacer desde cualquier lado; del 4 en adelante hay que 
 - n8n 1.6+ corriendo en la PC de Windows (`n8n --version`)
 - Node 18+ si vas a correr los scripts de este repo
 - Acceso al proyecto de Supabase
-- API key de Anthropic
+- API key de Gemini (Google AI Studio: https://aistudio.google.com/apikey)
 - El bot de WhatsApp de Jobidai andando
 
 ---
@@ -58,10 +58,13 @@ Deben salir 16 columnas y la tabla debe tener RLS activo.
 
 `Settings → Credentials → Add credential`:
 
-| Nombre                     | Tipo      | Qué lleva |
-|----------------------------|-----------|-----------|
-| `Anthropic API`            | Anthropic | La API key de Anthropic |
-| `Supabase - ideas_diarias` | Supabase  | Host del proyecto + **service_role** key |
+| Nombre                     | Tipo        | Qué lleva |
+|----------------------------|-------------|-----------|
+| `Gemini API`               | Header Auth | Name: `x-goog-api-key` · Value: la API key de Gemini |
+| `Supabase - ideas_diarias` | Supabase    | Host del proyecto + **service_role** key |
+
+> Se usa **Header Auth** genérico y no la credencial "Google Gemini" de n8n a propósito: el nodo
+> es un HTTP Request plano, así funciona igual sin importar la versión de n8n que tengas.
 
 > La `anon` key **no sirve**: la tabla tiene RLS y ninguna policy permite escritura a `anon`.
 > El workflow escribe con `service_role`, que hace bypass de RLS.
@@ -79,7 +82,8 @@ Después de importar, revisar en orden:
 1. **`Unir todas las fuentes`** debe tener **3 inputs**. n8n a veces importa el nodo Merge con 2.
    Si pasa: abrir el nodo, poner *Number of Inputs* = 3, y reconectar el normalizador que
    quedó suelto (HN→input 1, Reddit→input 2, Google News→input 3).
-2. **`Claude - Generar ángulos`** → asignar la credencial `Anthropic API`.
+2. **`Gemini - Generar ángulos`** → *Authentication: Generic Credential Type → Header Auth* →
+   asignar `Gemini API`.
 3. **`Guardar en Supabase`** → asignar `Supabase - ideas_diarias`.
 4. **`Enviar por WhatsApp`** es un placeholder (`noOp`). Reemplazarlo por el nodo real del bot
    de Jobidai y usar `{{ $json.mensaje }}` como texto del mensaje. Borrar el noOp y reconectar
@@ -103,9 +107,13 @@ copia versionada. Si cambias uno, cambia el otro en el mismo commit.
      bloquea User-Agents genéricos.
    - `Normalizar Google News` vacío → probar la URL del RSS en el navegador; Google cambia el
      formato de `ceid`/`hl` cada tanto.
-2. **Claude.** `Parsear respuesta IA` no debe traer `error: parse_error`. Si muchos items salen
-   con `parse_error` o `descartable: true`, **parar y avisar** — hay que ajustar el prompt, no
-   reintentar a ciegas.
+2. **Gemini.** `Parsear respuesta IA` no debe traer nada en la columna `error`.
+   - `parse_error` → devolvió texto pero no es JSON válido. Ajustar el prompt.
+   - `sin_respuesta:MAX_TOKENS` → se cortó la respuesta. Bajar `MAX_ITEMS` en
+     `workflows/nodes/prep.js` (por defecto 30) o subir `maxOutputTokens`.
+   - `sin_respuesta:SAFETY` → lo bloqueó el filtro de contenido de Google.
+   - Si muchos items salen con `descartable: true`, **parar y avisar** — es el prompt, no
+     reintentar a ciegas.
 3. **Supabase.**
    ```sql
    select fecha, count(*), count(*) filter (where error is not null) as con_error
@@ -153,7 +161,7 @@ Los code nodes viven en `workflows/nodes/*.js` (fuente de verdad). El JSON impor
 
 ```bash
 node scripts/build-workflow.js     # regenera workflows/ideas-diarias.json
-node scripts/test-pipeline.js      # 29 checks de la lógica, sin n8n ni red
+node scripts/test-pipeline.js      # 31 checks de la lógica, sin n8n ni red
 ```
 
 Si editas un code node desde la UI de n8n, copia el cambio de vuelta a `workflows/nodes/` y
