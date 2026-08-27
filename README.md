@@ -75,7 +75,7 @@ Para el despliegue completo: **[`scripts/setup.md`](scripts/setup.md)**.
 |------|--------|
 | Repo y artefactos | listo |
 | Lógica del pipeline (29 checks) | pasando |
-| Schema aplicado en Supabase | pendiente — falta confirmar el proyecto destino |
+| Schema aplicado en Supabase | listo — proyecto **Contaller** (`thxyfinqkzxjkjbrdbsp`) |
 | Credenciales en n8n | pendiente — requiere la PC |
 | Workflow importado | pendiente — requiere la PC |
 | Prueba end-to-end | pendiente — requiere la PC |

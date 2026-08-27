@@ -27,6 +27,10 @@ cp .env.example .env      # llenar con los valores reales; .env NO se commitea
 
 ## 2. Aplicar el schema en Supabase
 
+> **Ya está aplicado** en el proyecto **Contaller** (`thxyfinqkzxjkjbrdbsp`, us-east-1) —
+> el mismo que tiene las tablas `whatsapp_*` del bot. Esta sección queda como referencia
+> para re-aplicar o migrar a otro proyecto.
+
 Opción A — desde Claude Code con el MCP de Supabase:
 
 ```
